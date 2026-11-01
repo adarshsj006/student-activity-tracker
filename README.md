@@ -18,13 +18,7 @@ Built as the machine test for the **Python Internship** at Aifer Education Pvt. 
 - Loading states and clear error messages (including when the server is unreachable)
 - Data is saved in **SQLite**, so it survives restarts
 
-## Screenshots
 
-> Add your screenshots to a `screenshots/` folder and update the file names below.
-
-![Home page](screenshots/home.png)
-![Validation errors](screenshots/validation.png)
-![API docs](screenshots/api-docs.png)
 
 ---
 
