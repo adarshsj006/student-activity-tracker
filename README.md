@@ -1,6 +1,6 @@
 # Student Activity Tracker
 
-A small full-stack web app for logging student activities and viewing a summary. Users can add an activity (student name, activity, hours), see all activities in a table, delete entries, and view totals and the most active student.
+A small full-stack web app for logging student activities and viewing a summary. Users can add an activity (student name, activity, hours), see all activities in a table, delete entries, and view the totals and the most active student.
 
 Built as the machine test for the **Python Internship** at Aifer Education Pvt. Ltd.
 
@@ -16,9 +16,8 @@ Built as the machine test for the **Python Internship** at Aifer Education Pvt. 
 - **Delete** an activity
 - Validation on both the frontend and the backend
 - Loading states and clear error messages (including when the server is unreachable)
-- Data is saved in **SQLite**, so it survives restarts
-
-
+- Data is saved in **SQLite**, so it survives server restarts
+- Automated API tests with pytest
 
 ---
 
@@ -70,6 +69,8 @@ uvicorn main:app --reload
 The API runs at **http://localhost:8000**.
 Interactive API docs (Swagger): **http://localhost:8000/docs**
 
+The SQLite file `activities.db` is created automatically in the `backend` folder on first run.
+
 ### 2. Run the frontend
 
 Open a second terminal:
@@ -103,7 +104,7 @@ Base URL: `http://localhost:8000`
 | Method | Endpoint | Description | Success | Errors |
 |---|---|---|---|---|
 | POST | `/activities` | Add a new activity | `201 Created` | `422` invalid input |
-| GET | `/activities` | List all activities | `200 OK` | |
+| GET | `/activities` | List all activities (newest first) | `200 OK` | |
 | DELETE | `/activities/{id}` | Delete an activity | `200 OK` | `404` not found |
 | GET | `/summary` | Totals and most active user | `200 OK` | |
 
@@ -128,6 +129,7 @@ Response `201`:
 
 ```http
 POST /activities
+Content-Type: application/json
 
 { "name": "", "activity": "Chess", "hours": -1 }
 ```
@@ -155,7 +157,20 @@ Response `200`:
 { "total_entries": 3, "total_hours": 4.5, "most_active_user": "Anjali" }
 ```
 
-When there are no entries: `{ "total_entries": 0, "total_hours": 0, "most_active_user": null }`
+When there are no entries:
+
+```json
+{ "total_entries": 0, "total_hours": 0, "most_active_user": null }
+```
+
+**Delete an activity**
+
+```http
+DELETE /activities/1
+```
+
+Response `200`: `{ "message": "Deleted" }`
+If the id does not exist, response `404`: `{ "detail": "Activity not found" }`
 
 ---
 
@@ -163,11 +178,11 @@ When there are no entries: `{ "total_entries": 0, "total_hours": 0, "most_active
 
 | Field | Rule |
 |---|---|
-| `name` | Required, not blank, at most 100 characters (spaces are trimmed) |
-| `activity` | Required, not blank, at most 100 characters (spaces are trimmed) |
-| `hours` | Required number, greater than 0 and at most 24 (`NaN` and `Infinity` are rejected) |
+| `name` | Required, not blank (leading/trailing spaces are trimmed) |
+| `activity` | Required, not blank (leading/trailing spaces are trimmed) |
+| `hours` | Required number, greater than 0 and at most 24 |
 
-The frontend checks these before sending, and the backend checks them again, since the API can be called directly.
+The frontend checks these before sending, and the backend checks them again, since the API can be called directly (Postman, curl) without the UI.
 
 ---
 
@@ -176,11 +191,14 @@ The frontend checks these before sending, and the backend checks them again, sin
 1. The form keeps its values in React state (`useState`) and validates them on submit.
 2. `api.js` sends the request with Axios (`POST /activities`).
 3. FastAPI validates the body with a Pydantic model, saves the row in SQLite, and returns `201`.
-4. After a successful save, `App.jsx` reloads the list and summary (`GET /activities`, `GET /summary`).
+4. After a successful save, `App.jsx` reloads the list and summary (`GET /activities` and `GET /summary` run in parallel with `Promise.all`).
 5. `useEffect` loads the data once when the page first opens.
-6. The **most active student** is found with SQL: group by name (case-insensitive), sum the hours, take the highest total. Ties go to the name that comes first alphabetically.
+6. The **most active student** is found with SQL: group by name (case-insensitive, so "Anjali" and "anjali" count as one person), sum the hours, and take the highest total.
+7. If there are no entries, the summary returns `0` totals and `null` for the most active user, and the UI shows "None yet".
 
-CORS is enabled for `localhost` and `127.0.0.1` so the frontend (port 5173) can call the backend (port 8000).
+**Ties:** if two students have exactly the same total hours, the database returns one of them (not guaranteed which). See *Possible improvements*.
+
+**CORS** is enabled for `http://localhost:5173` and `http://localhost:3000` so the frontend can call the backend on port 8000.
 
 ---
 
@@ -194,7 +212,13 @@ pip install pytest httpx
 python -m pytest
 ```
 
-The tests cover adding, listing and deleting, input validation (empty values, negative, too large, wrong type, `NaN`), the summary calculation, the empty summary, the tie rule, and CORS.
+Each test runs against a temporary database, so your real data is never touched. The tests cover:
+
+- Adding and listing activities
+- Validation: empty name, negative hours, hours over 24, and a non-numeric value (all return `422`)
+- Summary calculation, including case-insensitive names
+- Empty summary
+- Deleting an activity, and `404` when deleting it again
 
 ### Manual testing
 
@@ -208,18 +232,25 @@ Use the Swagger page at http://localhost:8000/docs or Postman against `http://lo
 - **SQLite** so data persists without any setup.
 - **Parameterised SQL queries** (`?` placeholders) to prevent SQL injection.
 - **A separate `api.js`** keeps all network calls and error handling in one place.
-- **Hours limited to 24 per entry** and **names limited to 100 characters** to keep the data realistic.
+- **Hours limited to 24 per entry** to keep the data realistic.
+- **Validation on both sides:** the frontend for quick feedback, the backend for real protection.
+
+---
 
 ## Possible improvements
 
+- Deterministic tie-break for the most active student (e.g. alphabetical order)
+- Maximum length for name and activity, and rejecting `NaN`/`Infinity` for hours
 - Edit an existing activity
+- Confirmation before deleting
 - Pagination and search
 - Date field and filtering by student
+- API URL from an environment variable instead of being hardcoded in `api.js`
 - Docker setup and a hosted demo
 
 ---
 
 ## Author
 
-**Your Name**
-[GitHub](https://github.com/adarshsj006) · 
+
+[GitHub](https://github.com/adarshsj006)
